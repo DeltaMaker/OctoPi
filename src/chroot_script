@@ -30,6 +30,18 @@ apt-get update
 
 apt-get remove -y --purge scratch squeak-plugins-scratch squeak-vm wolfram-engine
 
+# get packages for WiFi access point
+sudo apt-get install hostapd udhcpd
+# Configure NAT
+sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
+echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf 
+# enable NAT in the kernel
+sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+sudo iptables -A FORWARD -i eth0 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -A FORWARD -i wlan0 -o eth0 -j ACCEPT
+
+sudo sh -c "iptables-save > /etc/iptables.ipv4.nat"
+
 #apt-get octoprint virtualenv
 apt-get -y install python-virtualenv python-dev git python-numpy
 
@@ -39,14 +51,26 @@ pushd /home/pi
   sudo -u pi virtualenv --system-site-packages oprint
   
   #OctoPrint
-  sudo -u pi git clone https://github.com/foosel/OctoPrint.git
+  sudo -u pi git clone https://github.com/DeltaMaker/OctoPrint.git
   pushd OctoPrint
+	git pull && git checkout devel
     sudo -u pi /home/pi/oprint/bin/python setup.py install
   popd
 
   #Make sure user pi has access to serial ports
   sudo usermod -a -G tty pi
   sudo usermod -a -G dialout pi
+
+  #Get Cura slicer
+  apt-get install -y python-wxgtk2.8
+  git clone https://github.com/daid/Cura.git
+  pushd Cura
+    git clone https://github.com/Ultimaker/CuraEngine.git
+    pushd CuraEngine
+      make
+    popd
+    { echo '#!/bin/sh'; echo 'PYTHONPATH=. python2 -m Cura.cura $@'; } >> cura.sh
+  popd
       
   #mjpg-streamer
   sudo apt-get -y install subversion libjpeg8-dev imagemagick libav-tools cmake
@@ -57,12 +81,12 @@ pushd /home/pi
   popd
   
   #Add pyserial that can handle non-standard baud rates
-  sudo -u pi svn co http://pyserial.svn.sourceforge.net/svnroot/pyserial/trunk pyserial
-  pushd pyserial
-      pushd pyserial
-          sudo -u pi /home/pi/oprint/bin/python setup.py install
-      popd
-  popd
+#  sudo -u pi svn co http://pyserial.svn.sourceforge.net/svnroot/pyserial/trunk pyserial
+#  pushd pyserial
+#      pushd pyserial
+#          sudo -u pi /home/pi/oprint/bin/python setup.py install
+#      popd
+#  popd
   
   #make autostart scripts
   pushd scripts
@@ -103,8 +127,8 @@ echo "pi ALL=NOPASSWD: /sbin/service" > /etc/sudoers.d/octoprint-service
 
 #reach printer by name
 sudo apt-get -y install avahi-daemon
-echo octopi > /etc/hostname
-sed -i 's@raspberrypi@octopi@' /etc/hosts
+# echo octopi > /etc/hostname
+# sed -i 's@raspberrypi@octopi@' /etc/hosts
 
 # enable raspicam
 echo "# enable raspicam" >> /boot/config.txt
@@ -116,6 +140,9 @@ unpackRoot
 
 #setup runlevels for initscripts
 sudo update-rc.d octoprint defaults 99
+
+sudo update-rc.d hostapd enable
+sudo update-rc.d udhcpd enable
 
 #cleanup
 fixLd
